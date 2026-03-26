@@ -7,7 +7,7 @@ resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
-  tags = { Name = "concord-vpc" }
+  tags = { Name = "concord-consulting-vpc" }
 }
 
 resource "aws_subnet" "public" {
@@ -15,31 +15,32 @@ resource "aws_subnet" "public" {
   cidr_block              = "10.0.1.0/24"
   map_public_ip_on_launch = true
   availability_zone       = "${var.aws_region}a"
-  tags = { Name = "concord-public-subnet" }
+  tags = { Name = "concord-consulting-public-subnet" }
 }
 
 resource "aws_subnet" "private_a" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.2.0/24"
   availability_zone = "${var.aws_region}a"
-  tags = { Name = "concord-private-subnet-a" }
+  tags = { Name = "concord-consulting-private-subnet-a" }
 }
 
 resource "aws_subnet" "private_b" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.3.0/24"
   availability_zone = "${var.aws_region}b"
-  tags = { Name = "concord-private-subnet-b" }
+  tags = { Name = "concord-consulting-private-subnet-b" }
 }
 
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
-  tags = { Name = "concord-igw" }
+  tags = { Name = "concord-consulting-igw" }
 }
 
 resource "aws_route_table" "rt" {
   vpc_id = aws_vpc.main.id
   route { cidr_block = "0.0.0.0/0"; gateway_id = aws_internet_gateway.igw.id }
+  tags = { Name = "concord-consulting-rt" }
 }
 
 resource "aws_route_table_association" "rta" {
@@ -49,18 +50,18 @@ resource "aws_route_table_association" "rta" {
 
 # ── Security Groups ──────────────────────────────────────────
 resource "aws_security_group" "web_sg" {
-  name   = "concord-web-sg"
+  name   = "concord-consulting-web-sg"
   vpc_id = aws_vpc.main.id
 
   ingress { from_port = 80;  to_port = 80;  protocol = "tcp"; cidr_blocks = ["0.0.0.0/0"] }
   ingress { from_port = 443; to_port = 443; protocol = "tcp"; cidr_blocks = ["0.0.0.0/0"] }
   ingress { from_port = 22;  to_port = 22;  protocol = "tcp"; cidr_blocks = [var.my_ip] }
   egress  { from_port = 0;   to_port = 0;   protocol = "-1";  cidr_blocks = ["0.0.0.0/0"] }
-  tags = { Name = "concord-web-sg" }
+  tags = { Name = "concord-consulting-web-sg" }
 }
 
 resource "aws_security_group" "rds_sg" {
-  name   = "concord-rds-sg"
+  name   = "concord-consulting-rds-sg"
   vpc_id = aws_vpc.main.id
 
   ingress {
@@ -70,7 +71,7 @@ resource "aws_security_group" "rds_sg" {
     security_groups = [aws_security_group.web_sg.id]
   }
   egress { from_port = 0; to_port = 0; protocol = "-1"; cidr_blocks = ["0.0.0.0/0"] }
-  tags = { Name = "concord-rds-sg" }
+  tags = { Name = "concord-consulting-rds-sg" }
 }
 
 # ── EC2 Instance ─────────────────────────────────────────────
@@ -103,23 +104,23 @@ resource "aws_instance" "web" {
       -e DB_USER=${var.db_user} \
       -e DB_PASS=${var.db_pass} \
       -e DB_NAME=${var.db_name} \
-      --name concord-web \
+      --name concord-consulting-web \
       ${var.ecr_image}
   EOF
 
-  tags = { Name = "concord-web-server" }
+  tags = { Name = "concord-consulting-web-server" }
   depends_on = [aws_db_instance.mysql]
 }
 
 # ── RDS MySQL ────────────────────────────────────────────────
 resource "aws_db_subnet_group" "rds_subnets" {
-  name       = "concord-rds-subnet-group"
+  name       = "concord-consulting-rds-subnet-group"
   subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-  tags = { Name = "concord-rds-subnet-group" }
+  tags = { Name = "concord-consulting-rds-subnet-group" }
 }
 
 resource "aws_db_instance" "mysql" {
-  identifier              = "concord-db"
+  identifier              = "concord-consulting-db"
   engine                  = "mysql"
   engine_version          = "8.0"
   instance_class          = "db.t3.micro"
@@ -135,13 +136,13 @@ resource "aws_db_instance" "mysql" {
   deletion_protection     = false
   backup_retention_period = 7
   publicly_accessible     = false
-  tags = { Name = "concord-mysql" }
+  tags = { Name = "concord-consulting-mysql" }
 }
 
 # ── S3 — Static Assets ───────────────────────────────────────
 resource "aws_s3_bucket" "assets" {
   bucket = "concord-consulting-assets-${var.env}"
-  tags   = { Name = "concord-assets" }
+  tags   = { Name = "concord-consulting-assets" }
 }
 
 resource "aws_s3_bucket_public_access_block" "assets" {
@@ -154,9 +155,9 @@ resource "aws_s3_bucket_public_access_block" "assets" {
 
 # ── S3 — CodePipeline Artifact Store ─────────────────────────
 resource "aws_s3_bucket" "pipeline_artifacts" {
-  bucket        = "concord-pipeline-artifacts-${var.env}"
+  bucket        = "concord-consulting-pipeline-artifacts-${var.env}"
   force_destroy = true
-  tags          = { Name = "concord-pipeline-artifacts" }
+  tags          = { Name = "concord-consulting-pipeline-artifacts" }
 }
 
 resource "aws_s3_bucket_public_access_block" "pipeline_artifacts" {
@@ -169,47 +170,47 @@ resource "aws_s3_bucket_public_access_block" "pipeline_artifacts" {
 
 # ── ECR Repository ───────────────────────────────────────────
 resource "aws_ecr_repository" "app" {
-  name                 = "concord-web"
+  name                 = "concord-consulting-web"
   image_tag_mutability = "MUTABLE"
   image_scanning_configuration { scan_on_push = true }
-  tags = { Name = "concord-ecr" }
+  tags = { Name = "concord-consulting-ecr" }
 }
 
 # ── CodeCommit Repository ─────────────────────────────────────
 resource "aws_codecommit_repository" "app" {
-  repository_name = "concord-web"
-  description     = "Concord Consulting web application source code"
-  tags            = { Name = "concord-repo" }
+  repository_name = "concord-consulting-web"
+  description     = "Concord Consulting — IT, Education & Industry Website Source Code"
+  tags            = { Name = "concord-consulting-repo" }
 }
 
 # ── SSM Parameter Store — secrets read by CodeBuild ──────────
 resource "aws_ssm_parameter" "db_host" {
-  name  = "/concord/prod/DB_HOST"
+  name  = "/concordconsulting/prod/DB_HOST"
   type  = "SecureString"
   value = aws_db_instance.mysql.address
 }
 
 resource "aws_ssm_parameter" "db_user" {
-  name  = "/concord/prod/DB_USER"
+  name  = "/concordconsulting/prod/DB_USER"
   type  = "SecureString"
   value = var.db_user
 }
 
 resource "aws_ssm_parameter" "db_pass" {
-  name  = "/concord/prod/DB_PASS"
+  name  = "/concordconsulting/prod/DB_PASS"
   type  = "SecureString"
   value = var.db_pass
 }
 
 resource "aws_ssm_parameter" "db_name" {
-  name  = "/concord/prod/DB_NAME"
+  name  = "/concordconsulting/prod/DB_NAME"
   type  = "SecureString"
   value = var.db_name
 }
 
 # ── IAM — EC2 Role ────────────────────────────────────────────
 resource "aws_iam_role" "ec2_role" {
-  name = "concord-ec2-role"
+  name = "concord-consulting-ec2-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{ Action = "sts:AssumeRole"; Effect = "Allow"; Principal = { Service = "ec2.amazonaws.com" } }]
@@ -227,13 +228,13 @@ resource "aws_iam_role_policy_attachment" "ec2_ssm" {
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "concord-ec2-profile"
+  name = "concord-consulting-ec2-profile"
   role = aws_iam_role.ec2_role.name
 }
 
 # ── IAM — CodeBuild Role ──────────────────────────────────────
 resource "aws_iam_role" "codebuild_role" {
-  name = "concord-codebuild-role"
+  name = "concord-consulting-codebuild-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{ Action = "sts:AssumeRole"; Effect = "Allow"; Principal = { Service = "codebuild.amazonaws.com" } }]
@@ -241,7 +242,7 @@ resource "aws_iam_role" "codebuild_role" {
 }
 
 resource "aws_iam_role_policy" "codebuild_policy" {
-  name = "concord-codebuild-policy"
+  name = "concord-consulting-codebuild-policy"
   role = aws_iam_role.codebuild_role.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -289,7 +290,7 @@ resource "aws_iam_role_policy" "codebuild_policy" {
 
 # ── IAM — CodePipeline Role ───────────────────────────────────
 resource "aws_iam_role" "codepipeline_role" {
-  name = "concord-codepipeline-role"
+  name = "concord-consulting-codepipeline-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{ Action = "sts:AssumeRole"; Effect = "Allow"; Principal = { Service = "codepipeline.amazonaws.com" } }]
@@ -297,7 +298,7 @@ resource "aws_iam_role" "codepipeline_role" {
 }
 
 resource "aws_iam_role_policy" "codepipeline_policy" {
-  name = "concord-codepipeline-policy"
+  name = "concord-consulting-codepipeline-policy"
   role = aws_iam_role.codepipeline_role.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -326,8 +327,8 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
 
 # ── CodeBuild Project ─────────────────────────────────────────
 resource "aws_codebuild_project" "app" {
-  name          = "concord-web-build"
-  description   = "Test, build Docker image, push to ECR, deploy to EC2"
+  name          = "concord-consulting-build"
+  description   = "Concord Consulting — Test, build Docker image, push to ECR, deploy to EC2"
   service_role  = aws_iam_role.codebuild_role.arn
   build_timeout = 20
 
@@ -351,17 +352,17 @@ resource "aws_codebuild_project" "app" {
 
   logs_config {
     cloudwatch_logs {
-      group_name  = "/aws/codebuild/concord-web"
+      group_name  = "/aws/codebuild/concord-consulting"
       stream_name = "build-log"
     }
   }
 
-  tags = { Name = "concord-codebuild" }
+  tags = { Name = "concord-consulting-codebuild" }
 }
 
 # ── CodePipeline ──────────────────────────────────────────────
 resource "aws_codepipeline" "app" {
-  name     = "concord-web-pipeline"
+  name     = "concord-consulting-pipeline"
   role_arn = aws_iam_role.codepipeline_role.arn
 
   artifact_store {
@@ -400,12 +401,12 @@ resource "aws_codepipeline" "app" {
     }
   }
 
-  tags = { Name = "concord-pipeline" }
+  tags = { Name = "concord-consulting-pipeline" }
 }
 
 # ── CloudWatch Log Group ──────────────────────────────────────
 resource "aws_cloudwatch_log_group" "codebuild" {
-  name              = "/aws/codebuild/concord-web"
+  name              = "/aws/codebuild/concord-consulting"
   retention_in_days = 14
-  tags              = { Name = "concord-codebuild-logs" }
+  tags              = { Name = "concord-consulting-codebuild-logs" }
 }

@@ -1,7 +1,8 @@
 {
   "name": "concord-consulting",
   "version": "1.0.0",
-  "description": "Concord Consulting dynamic website",
+  "description": "Concord Consulting — IT, Education & Industry Professional Website",
+  "author": "Concord Consulting Team",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

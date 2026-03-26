@@ -1,18 +1,18 @@
 version: 0.2
 
-# AWS CodeBuild buildspec — runs inside CodePipeline
-# Phases: install → pre_build (login to ECR) → build (Docker) → post_build (push + deploy)
+# Concord Consulting — AWS CodeBuild buildspec
+# Phases: install → pre_build (tests + ECR login) → build (Docker) → post_build (push + deploy)
 
 env:
   variables:
     AWS_REGION:   "eu-west-1"
-    ECR_REPO:     "concord-web"
+    ECR_REPO:     "concord-consulting-web"
     IMAGE_TAG:    "latest"
   parameter-store:
-    DB_HOST: "/concord/prod/DB_HOST"
-    DB_USER: "/concord/prod/DB_USER"
-    DB_PASS: "/concord/prod/DB_PASS"
-    DB_NAME: "/concord/prod/DB_NAME"
+    DB_HOST: "/concordconsulting/prod/DB_HOST"
+    DB_USER: "/concordconsulting/prod/DB_USER"
+    DB_PASS: "/concordconsulting/prod/DB_PASS"
+    DB_NAME: "/concordconsulting/prod/DB_NAME"
 
 phases:
 
@@ -20,12 +20,12 @@ phases:
     runtime-versions:
       nodejs: 20
     commands:
-      - echo "Installing Node dependencies for tests..."
+      - echo "Concord Consulting — Installing Node dependencies..."
       - npm ci
 
   pre_build:
     commands:
-      - echo "Running health tests..."
+      - echo "Running Concord Consulting health tests..."
       - npm test
       - echo "Logging in to Amazon ECR..."
       - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -36,17 +36,17 @@ phases:
 
   build:
     commands:
-      - echo "Building Docker image..."
+      - echo "Building Concord Consulting Docker image..."
       - docker build -t $ECR_REPO:$IMAGE_TAG .
       - docker tag $ECR_REPO:$IMAGE_TAG $IMAGE_URI
       - echo "Docker build complete"
 
   post_build:
     commands:
-      - echo "Pushing image to ECR..."
+      - echo "Pushing Concord Consulting image to ECR..."
       - docker push $IMAGE_URI
       - echo "Image pushed: $IMAGE_URI"
-      - echo "Deploying to EC2 via SSM..."
+      - echo "Deploying Concord Consulting to EC2 via SSM..."
       - |
         aws ssm send-command \
           --region $AWS_REGION \
@@ -55,11 +55,11 @@ phases:
           --parameters "commands=[
             'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY',
             'docker pull $IMAGE_URI',
-            'docker stop concord-web || true',
-            'docker rm concord-web || true',
-            'docker run -d -p 80:3000 --restart unless-stopped --name concord-web -e DB_HOST=$DB_HOST -e DB_USER=$DB_USER -e DB_PASS=$DB_PASS -e DB_NAME=$DB_NAME $IMAGE_URI'
+            'docker stop concord-consulting-web || true',
+            'docker rm concord-consulting-web || true',
+            'docker run -d -p 80:3000 --restart unless-stopped --name concord-consulting-web -e DB_HOST=$DB_HOST -e DB_USER=$DB_USER -e DB_PASS=$DB_PASS -e DB_NAME=$DB_NAME $IMAGE_URI'
           ]" \
-          --comment "CodePipeline deploy"
+          --comment "Concord Consulting CodePipeline deploy"
       - echo "Deployment command sent successfully"
 
 artifacts:

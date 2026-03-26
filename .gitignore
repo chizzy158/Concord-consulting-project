@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────
+# .gitignore — files Git will NEVER track or upload to CodeCommit
+# ─────────────────────────────────────────────────────────────
+
+# ── Environment & secrets ─────────────────────────────────────
+# Real credentials — NEVER commit these
+.env
+*.env.local
+
+# ── Terraform secrets & state ─────────────────────────────────
+# Contains your DB password, AWS account ID, IP address
+terraform.tfvars
+
+# Terraform state files — contain sensitive infrastructure details
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# ── Node.js ───────────────────────────────────────────────────
+# Downloaded automatically by npm install — not needed in repo
+node_modules/
+
+# npm debug logs
+npm-debug.log*
+
+# ── Operating system files ────────────────────────────────────
+.DS_Store          # Mac
+Thumbs.db          # Windows
+desktop.ini        # Windows
+
+# ── Editor files ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

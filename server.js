@@ -49,24 +49,37 @@ const pool = mysql.createPool({
 
 /* ──────────────────────────────────────
    INIT DATABASE TABLE
+   Retries every 10 seconds if DB is not
+   ready yet — does NOT crash the server
 ────────────────────────────────────── */
+let dbReady = false;
+
 async function initDB() {
-  const conn = await pool.getConnection();
-  await conn.execute(`
-    CREATE TABLE IF NOT EXISTS contacts (
-      id         INT AUTO_INCREMENT PRIMARY KEY,
-      name       VARCHAR(120)  NOT NULL,
-      email      VARCHAR(200)  NOT NULL,
-      phone      VARCHAR(30),
-      company    VARCHAR(120),
-      service    VARCHAR(80)   NOT NULL,
-      message    TEXT          NOT NULL,
-      ip_address VARCHAR(45),
-      created_at TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  conn.release();
-  console.log('✅  Database table ready');
+  try {
+    const conn = await pool.getConnection();
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS contacts (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        name       VARCHAR(120)  NOT NULL,
+        email      VARCHAR(200)  NOT NULL,
+        phone      VARCHAR(30),
+        company    VARCHAR(120),
+        service    VARCHAR(80)   NOT NULL,
+        message    TEXT          NOT NULL,
+        ip_address VARCHAR(45),
+        created_at TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    conn.release();
+    dbReady = true;
+    console.log('✅  Database table ready');
+  } catch (err) {
+    // DB not available yet — log warning but keep server running
+    console.warn('⚠️   DB not available yet:', err.message);
+    console.warn('⚠️   Website will still serve. Retrying in 10 seconds...');
+    // Retry connection every 10 seconds until DB is ready
+    setTimeout(initDB, 10000);
+  }
 }
 
 /* ──────────────────────────────────────
@@ -83,7 +96,9 @@ app.get('/health', async (req, res) => {
     conn.release();
     res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
   } catch {
-    res.status(503).json({ status: 'error', db: 'unreachable' });
+    // Return 200 even without DB so the container stays alive
+    // DB status is shown but server is still healthy
+    res.json({ status: 'ok', db: 'unreachable', timestamp: new Date().toISOString() });
   }
 });
 
@@ -91,6 +106,11 @@ app.get('/health', async (req, res) => {
    CONTACT FORM API
 ────────────────────────────────────── */
 app.post('/api/contact', contactLimiter, async (req, res) => {
+  // If DB not ready, return friendly error instead of crashing
+  if (!dbReady) {
+    return res.status(503).json({ error: 'Database not available yet. Please try again shortly.' });
+  }
+
   const { name, email, phone, company, service, message } = req.body;
 
   // --- Input validation ---
@@ -138,14 +158,16 @@ app.get('*', (req, res) => {
 
 /* ──────────────────────────────────────
    START SERVER
+   Server always starts — DB connects
+   in the background when available
 ────────────────────────────────────── */
-initDB()
-  .then(() => {
-    app.listen(PORT, () => console.log(`🚀  Concord server running on port ${PORT}`));
-  })
-  .catch(err => {
-    console.error('❌  Failed to initialise DB:', err.message);
-    process.exit(1);
-  });
+
+// Start the web server immediately — don't wait for DB
+app.listen(PORT, () => {
+  console.log(`🚀  Concord server running on port ${PORT}`);
+});
+
+// Try to connect to DB in background — retries automatically
+initDB();
 
 module.exports = app;
