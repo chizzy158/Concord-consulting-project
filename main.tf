@@ -39,7 +39,10 @@ resource "aws_internet_gateway" "igw" {
 
 resource "aws_route_table" "rt" {
   vpc_id = aws_vpc.main.id
-  route { cidr_block = "0.0.0.0/0"; gateway_id = aws_internet_gateway.igw.id }
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
   tags = { Name = "concord-consulting-rt" }
 }
 
@@ -53,10 +56,30 @@ resource "aws_security_group" "web_sg" {
   name   = "concord-consulting-web-sg"
   vpc_id = aws_vpc.main.id
 
-  ingress { from_port = 80;  to_port = 80;  protocol = "tcp"; cidr_blocks = ["0.0.0.0/0"] }
-  ingress { from_port = 443; to_port = 443; protocol = "tcp"; cidr_blocks = ["0.0.0.0/0"] }
-  ingress { from_port = 22;  to_port = 22;  protocol = "tcp"; cidr_blocks = [var.my_ip] }
-  egress  { from_port = 0;   to_port = 0;   protocol = "-1";  cidr_blocks = ["0.0.0.0/0"] }
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
   tags = { Name = "concord-consulting-web-sg" }
 }
 
@@ -70,7 +93,12 @@ resource "aws_security_group" "rds_sg" {
     protocol        = "tcp"
     security_groups = [aws_security_group.web_sg.id]
   }
-  egress { from_port = 0; to_port = 0; protocol = "-1"; cidr_blocks = ["0.0.0.0/0"] }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
   tags = { Name = "concord-consulting-rds-sg" }
 }
 
@@ -108,7 +136,7 @@ resource "aws_instance" "web" {
       ${var.ecr_image}
   EOF
 
-  tags = { Name = "concord-consulting-web-server" }
+  tags       = { Name = "concord-consulting-web-server" }
   depends_on = [aws_db_instance.mysql]
 }
 
@@ -116,7 +144,7 @@ resource "aws_instance" "web" {
 resource "aws_db_subnet_group" "rds_subnets" {
   name       = "concord-consulting-rds-subnet-group"
   subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-  tags = { Name = "concord-consulting-rds-subnet-group" }
+  tags       = { Name = "concord-consulting-rds-subnet-group" }
 }
 
 resource "aws_db_instance" "mysql" {
@@ -136,7 +164,7 @@ resource "aws_db_instance" "mysql" {
   deletion_protection     = false
   backup_retention_period = 7
   publicly_accessible     = false
-  tags = { Name = "concord-consulting-mysql" }
+  tags                    = { Name = "concord-consulting-mysql" }
 }
 
 # ── S3 — Static Assets ───────────────────────────────────────
@@ -172,7 +200,9 @@ resource "aws_s3_bucket_public_access_block" "pipeline_artifacts" {
 resource "aws_ecr_repository" "app" {
   name                 = "concord-consulting-web"
   image_tag_mutability = "MUTABLE"
-  image_scanning_configuration { scan_on_push = true }
+  image_scanning_configuration {
+    scan_on_push = true
+  }
   tags = { Name = "concord-consulting-ecr" }
 }
 
@@ -183,7 +213,7 @@ resource "aws_codecommit_repository" "app" {
   tags            = { Name = "concord-consulting-repo" }
 }
 
-# ── SSM Parameter Store — secrets read by CodeBuild ──────────
+# ── SSM Parameter Store ───────────────────────────────────────
 resource "aws_ssm_parameter" "db_host" {
   name  = "/concordconsulting/prod/DB_HOST"
   type  = "SecureString"
@@ -213,7 +243,11 @@ resource "aws_iam_role" "ec2_role" {
   name = "concord-consulting-ec2-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{ Action = "sts:AssumeRole"; Effect = "Allow"; Principal = { Service = "ec2.amazonaws.com" } }]
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
   })
 }
 
@@ -237,7 +271,11 @@ resource "aws_iam_role" "codebuild_role" {
   name = "concord-consulting-codebuild-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{ Action = "sts:AssumeRole"; Effect = "Allow"; Principal = { Service = "codebuild.amazonaws.com" } }]
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "codebuild.amazonaws.com" }
+    }]
   })
 }
 
@@ -267,16 +305,22 @@ resource "aws_iam_role_policy" "codebuild_policy" {
         Resource = "*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:GetBucketLocation"]
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:GetBucketLocation"]
         Resource = [
           aws_s3_bucket.pipeline_artifacts.arn,
           "${aws_s3_bucket.pipeline_artifacts.arn}/*"
         ]
       },
       {
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath", "ssm:SendCommand", "ssm:GetCommandInvocation"]
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:GetParametersByPath",
+          "ssm:SendCommand",
+          "ssm:GetCommandInvocation"
+        ]
         Resource = "*"
       },
       {
@@ -293,7 +337,11 @@ resource "aws_iam_role" "codepipeline_role" {
   name = "concord-consulting-codepipeline-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{ Action = "sts:AssumeRole"; Effect = "Allow"; Principal = { Service = "codepipeline.amazonaws.com" } }]
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "codepipeline.amazonaws.com" }
+    }]
   })
 }
 
@@ -304,8 +352,14 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["codecommit:GetBranch", "codecommit:GetCommit", "codecommit:UploadArchive", "codecommit:GetUploadArchiveStatus", "codecommit:CancelUploadArchive"]
+        Effect = "Allow"
+        Action = [
+          "codecommit:GetBranch",
+          "codecommit:GetCommit",
+          "codecommit:UploadArchive",
+          "codecommit:GetUploadArchiveStatus",
+          "codecommit:CancelUploadArchive"
+        ]
         Resource = aws_codecommit_repository.app.arn
       },
       {
@@ -314,8 +368,13 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
         Resource = aws_codebuild_project.app.arn
       },
       {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:GetBucketVersioning", "s3:GetBucketLocation"]
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:GetBucketVersioning",
+          "s3:GetBucketLocation"
+        ]
         Resource = [
           aws_s3_bucket.pipeline_artifacts.arn,
           "${aws_s3_bucket.pipeline_artifacts.arn}/*"
@@ -332,7 +391,9 @@ resource "aws_codebuild_project" "app" {
   service_role  = aws_iam_role.codebuild_role.arn
   build_timeout = 20
 
-  artifacts { type = "CODEPIPELINE" }
+  artifacts {
+    type = "CODEPIPELINE"
+  }
 
   environment {
     type            = "LINUX_CONTAINER"
@@ -340,9 +401,18 @@ resource "aws_codebuild_project" "app" {
     image           = "aws/codebuild/standard:7.0"
     privileged_mode = true
 
-    environment_variable { name = "AWS_REGION";      value = var.aws_region }
-    environment_variable { name = "ECR_REPO";        value = aws_ecr_repository.app.name }
-    environment_variable { name = "EC2_INSTANCE_ID"; value = aws_instance.web.id }
+    environment_variable {
+      name  = "AWS_REGION"
+      value = var.aws_region
+    }
+    environment_variable {
+      name  = "ECR_REPO"
+      value = aws_ecr_repository.app.name
+    }
+    environment_variable {
+      name  = "EC2_INSTANCE_ID"
+      value = aws_instance.web.id
+    }
   }
 
   source {
@@ -397,7 +467,9 @@ resource "aws_codepipeline" "app" {
       version          = "1"
       input_artifacts  = ["source_output"]
       output_artifacts = ["build_output"]
-      configuration    = { ProjectName = aws_codebuild_project.app.name }
+      configuration = {
+        ProjectName = aws_codebuild_project.app.name
+      }
     }
   }
 
