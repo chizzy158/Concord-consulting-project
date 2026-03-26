@@ -1,0 +1,9 @@
+output "server_public_ip"       { value = aws_instance.web.public_ip }
+output "website_url"            { value = "http://${aws_instance.web.public_ip}" }
+output "s3_bucket_name"         { value = aws_s3_bucket.assets.bucket }
+output "rds_endpoint"           { value = aws_db_instance.mysql.address }
+output "rds_port"               { value = aws_db_instance.mysql.port }
+output "ecr_repository_url"     { value = aws_ecr_repository.app.repository_url }
+output "codecommit_clone_url"   { value = aws_codecommit_repository.app.clone_url_http }
+output "codepipeline_name"      { value = aws_codepipeline.app.name }
+output "codebuild_project_name" { value = aws_codebuild_project.app.name }
