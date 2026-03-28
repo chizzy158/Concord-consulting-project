@@ -5,9 +5,9 @@ version: 0.2
 
 env:
   variables:
-    AWS_REGION:   "eu-west-1"
-    ECR_REPO:     "concord-consulting-web"
-    IMAGE_TAG:    "latest"
+    AWS_REGION: "eu-west-1"
+    ECR_REPO: "concord-consulting-web"
+    IMAGE_TAG: "latest"
   parameter-store:
     DB_HOST: "/concordconsulting/prod/DB_HOST"
     DB_USER: "/concordconsulting/prod/DB_USER"
@@ -20,7 +20,7 @@ phases:
     runtime-versions:
       nodejs: 20
     commands:
-      - echo "Concord Consulting — Installing Node dependencies..."
+      - echo "Concord Consulting - Installing Node dependencies..."
       - npm ci
 
   pre_build:
@@ -45,21 +45,9 @@ phases:
     commands:
       - echo "Pushing Concord Consulting image to ECR..."
       - docker push $IMAGE_URI
-      - echo "Image pushed: $IMAGE_URI"
-      - echo "Deploying Concord Consulting to EC2 via SSM..."
-      - |
-        aws ssm send-command \
-          --region $AWS_REGION \
-          --instance-ids $EC2_INSTANCE_ID \
-          --document-name "AWS-RunShellScript" \
-          --parameters "commands=[
-            'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY',
-            'docker pull $IMAGE_URI',
-            'docker stop concord-consulting-web || true',
-            'docker rm concord-consulting-web || true',
-            'docker run -d -p 80:3000 --restart unless-stopped --name concord-consulting-web -e DB_HOST=$DB_HOST -e DB_USER=$DB_USER -e DB_PASS=$DB_PASS -e DB_NAME=$DB_NAME $IMAGE_URI'
-          ]" \
-          --comment "Concord Consulting CodePipeline deploy"
+      - echo "Image pushed successfully"
+      - echo "Deploying to EC2 via SSM..."
+      - aws ssm send-command --region $AWS_REGION --instance-ids $EC2_INSTANCE_ID --document-name "AWS-RunShellScript" --parameters commands=["aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $IMAGE_URI","docker stop concord-consulting-web || true","docker rm concord-consulting-web || true","docker run -d -p 80:3000 --restart unless-stopped --name concord-consulting-web -e DB_HOST=$DB_HOST -e DB_USER=$DB_USER -e DB_PASS=$DB_PASS -e DB_NAME=$DB_NAME $IMAGE_URI"] --comment "Concord Consulting CodePipeline deploy"
       - echo "Deployment command sent successfully"
 
 artifacts:
