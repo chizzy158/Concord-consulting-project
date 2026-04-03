@@ -140,6 +140,14 @@ resource "aws_instance" "web" {
   depends_on = [aws_db_instance.mysql]
 }
 
+# ── Elastic IP — Fixed Public IP for EC2 ────────────────────
+resource "aws_eip" "web" {
+  instance = aws_instance.web.id
+  domain   = "vpc"
+  tags     = { Name = "concord-consulting-eip" }
+  depends_on = [aws_internet_gateway.igw]
+}
+
 # ── RDS MySQL ────────────────────────────────────────────────
 resource "aws_db_subnet_group" "rds_subnets" {
   name       = "concord-consulting-rds-subnet-group"
@@ -181,7 +189,7 @@ resource "aws_s3_bucket_public_access_block" "assets" {
   restrict_public_buckets = true
 }
 
-# ── S3 — CodePipeline Artifact Store ─────────────────────────
+# ── S3 — CodePipeline Artifacts ──────────────────────────────
 resource "aws_s3_bucket" "pipeline_artifacts" {
   bucket        = "concord-consulting-pipeline-artifacts-${var.env}"
   force_destroy = true
@@ -209,7 +217,7 @@ resource "aws_ecr_repository" "app" {
 # ── CodeCommit Repository ─────────────────────────────────────
 resource "aws_codecommit_repository" "app" {
   repository_name = "concord-consulting-web"
-  description     = "Concord Consulting — IT, Education & Industry Website Source Code"
+  description     = "Concord Consulting website source code"
   tags            = { Name = "concord-consulting-repo" }
 }
 
@@ -259,6 +267,11 @@ resource "aws_iam_role_policy_attachment" "ec2_ecr" {
 resource "aws_iam_role_policy_attachment" "ec2_ssm" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_role_policy_attachment" "ec2_cloudwatch" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
@@ -387,7 +400,7 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
 # ── CodeBuild Project ─────────────────────────────────────────
 resource "aws_codebuild_project" "app" {
   name          = "concord-consulting-build"
-  description   = "Concord Consulting — Test, build Docker image, push to ECR, deploy to EC2"
+  description   = "Concord Consulting — build, test, push, deploy"
   service_role  = aws_iam_role.codebuild_role.arn
   build_timeout = 20
 
@@ -476,9 +489,286 @@ resource "aws_codepipeline" "app" {
   tags = { Name = "concord-consulting-pipeline" }
 }
 
-# ── CloudWatch Log Group ──────────────────────────────────────
+# ── CloudWatch — CodeBuild Log Group ─────────────────────────
 resource "aws_cloudwatch_log_group" "codebuild" {
   name              = "/aws/codebuild/concord-consulting"
   retention_in_days = 14
   tags              = { Name = "concord-consulting-codebuild-logs" }
+}
+
+# ── CloudWatch — Application Log Group ───────────────────────
+resource "aws_cloudwatch_log_group" "app" {
+  name              = "/concord-consulting/app"
+  retention_in_days = 14
+  tags              = { Name = "concord-consulting-app-logs" }
+}
+
+# ── CloudWatch — EC2 CPU Alarm ────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "ec2_cpu_high" {
+  alarm_name          = "concord-consulting-ec2-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 120
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "EC2 CPU above 80% for 4 minutes"
+  treat_missing_data  = "notBreaching"
+  dimensions          = { InstanceId = aws_instance.web.id }
+  tags                = { Name = "concord-consulting-ec2-cpu-alarm" }
+}
+
+# ── CloudWatch — EC2 Status Check Alarm ──────────────────────
+resource "aws_cloudwatch_metric_alarm" "ec2_status_check" {
+  alarm_name          = "concord-consulting-ec2-status-check"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "StatusCheckFailed"
+  namespace           = "AWS/EC2"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 0
+  alarm_description   = "EC2 status check failed — server may be down"
+  treat_missing_data  = "breaching"
+  dimensions          = { InstanceId = aws_instance.web.id }
+  tags                = { Name = "concord-consulting-ec2-status-alarm" }
+}
+
+# ── CloudWatch — RDS CPU Alarm ────────────────────────────────
+resource "aws_cloudwatch_metric_alarm" "rds_cpu_high" {
+  alarm_name          = "concord-consulting-rds-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/RDS"
+  period              = 120
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "RDS CPU above 80% for 4 minutes"
+  treat_missing_data  = "notBreaching"
+  dimensions          = { DBInstanceIdentifier = aws_db_instance.mysql.id }
+  tags                = { Name = "concord-consulting-rds-cpu-alarm" }
+}
+
+# ── CloudWatch — RDS Low Storage Alarm ───────────────────────
+resource "aws_cloudwatch_metric_alarm" "rds_storage_low" {
+  alarm_name          = "concord-consulting-rds-storage-low"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "FreeStorageSpace"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 2000000000
+  alarm_description   = "RDS free storage below 2GB"
+  treat_missing_data  = "notBreaching"
+  dimensions          = { DBInstanceIdentifier = aws_db_instance.mysql.id }
+  tags                = { Name = "concord-consulting-rds-storage-alarm" }
+}
+
+# ── CloudWatch — RDS Connections Alarm ───────────────────────
+resource "aws_cloudwatch_metric_alarm" "rds_connections" {
+  alarm_name          = "concord-consulting-rds-connections"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "DatabaseConnections"
+  namespace           = "AWS/RDS"
+  period              = 120
+  statistic           = "Average"
+  threshold           = 50
+  alarm_description   = "RDS connections above 50"
+  treat_missing_data  = "notBreaching"
+  dimensions          = { DBInstanceIdentifier = aws_db_instance.mysql.id }
+  tags                = { Name = "concord-consulting-rds-connections-alarm" }
+}
+
+# ── CloudWatch Dashboard ──────────────────────────────────────
+resource "aws_cloudwatch_dashboard" "main" {
+  dashboard_name = "concord-consulting-dashboard"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title   = "EC2 CPU Utilisation"
+          region  = "eu-west-1"
+          period  = 300
+          stat    = "Average"
+          view    = "timeSeries"
+          stacked = false
+          metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", aws_instance.web.id]]
+          yAxis   = { left = { min = 0, max = 100 } }
+          annotations = {
+            horizontal = [{ value = 80, label = "Alarm threshold", color = "#ff0000" }]
+          }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title   = "RDS CPU Utilisation"
+          region  = "eu-west-1"
+          period  = 300
+          stat    = "Average"
+          view    = "timeSeries"
+          stacked = false
+          metrics = [["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", aws_db_instance.mysql.id]]
+          yAxis   = { left = { min = 0, max = 100 } }
+          annotations = {
+            horizontal = [{ value = 80, label = "Alarm threshold", color = "#ff0000" }]
+          }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title   = "EC2 Network In/Out"
+          region  = "eu-west-1"
+          period  = 300
+          stat    = "Sum"
+          view    = "timeSeries"
+          stacked = false
+          metrics = [
+            ["AWS/EC2", "NetworkIn",  "InstanceId", aws_instance.web.id],
+            ["AWS/EC2", "NetworkOut", "InstanceId", aws_instance.web.id]
+          ]
+          annotations = { horizontal = [] }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title   = "RDS Database Connections"
+          region  = "eu-west-1"
+          period  = 300
+          stat    = "Average"
+          view    = "timeSeries"
+          stacked = false
+          metrics = [["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", aws_db_instance.mysql.id]]
+          annotations = { horizontal = [] }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title   = "RDS Free Storage Space"
+          region  = "eu-west-1"
+          period  = 300
+          stat    = "Average"
+          view    = "timeSeries"
+          stacked = false
+          metrics = [["AWS/RDS", "FreeStorageSpace", "DBInstanceIdentifier", aws_db_instance.mysql.id]]
+          annotations = {
+            horizontal = [{ value = 2000000000, label = "2GB warning", color = "#ff9900" }]
+          }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title   = "EC2 Status Check"
+          region  = "eu-west-1"
+          period  = 60
+          stat    = "Maximum"
+          view    = "timeSeries"
+          stacked = false
+          metrics = [["AWS/EC2", "StatusCheckFailed", "InstanceId", aws_instance.web.id]]
+          annotations = {
+            horizontal = [{ value = 1, label = "Status check failed", color = "#ff0000" }]
+          }
+        }
+      },
+      {
+        type   = "log"
+        x      = 0
+        y      = 18
+        width  = 24
+        height = 6
+        properties = {
+          title  = "CodeBuild Logs - Recent Deployments"
+          region = "eu-west-1"
+          query  = "SOURCE '/aws/codebuild/concord-consulting' | fields @timestamp, @message | sort @timestamp desc | limit 50"
+          view   = "table"
+        }
+      }
+    ]
+  })
+}
+
+# ── CloudFront Distribution ───────────────────────────────────
+resource "aws_cloudfront_distribution" "web" {
+  enabled             = true
+  default_root_object = "index.html"
+  comment             = "Concord Consulting HTTPS CDN"
+
+  origin {
+    domain_name = aws_eip.web.public_dns
+    origin_id   = "concord-ec2-origin"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "concord-ec2-origin"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Origin", "Access-Control-Request-Headers", "Access-Control-Request-Method", "Host"]
+      cookies {
+        forward = "none"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags       = { Name = "concord-consulting-cloudfront" }
+  depends_on = [aws_instance.web]
 }

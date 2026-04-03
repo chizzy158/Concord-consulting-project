@@ -46,8 +46,8 @@ phases:
       - echo "Pushing Concord Consulting image to ECR..."
       - docker push $IMAGE_URI
       - echo "Image pushed successfully"
-      - echo "Deploying to EC2 via SSM..."
-      - aws ssm send-command --region $AWS_REGION --instance-ids $EC2_INSTANCE_ID --document-name "AWS-RunShellScript" --parameters commands=["aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $IMAGE_URI","docker stop concord-consulting-web || true","docker rm concord-consulting-web || true","docker run -d -p 80:3000 --restart unless-stopped --name concord-consulting-web -e DB_HOST=$DB_HOST -e DB_USER=$DB_USER -e DB_PASS=$DB_PASS -e DB_NAME=$DB_NAME $IMAGE_URI"] --comment "Concord Consulting CodePipeline deploy"
+      - echo "Deploying to EC2 via SSM with CloudWatch logging..."
+      - aws ssm send-command --region $AWS_REGION --instance-ids $EC2_INSTANCE_ID --document-name "AWS-RunShellScript" --parameters commands=["aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $IMAGE_URI","docker stop concord-consulting-web || true","docker rm concord-consulting-web || true","docker run -d -p 80:3000 --restart unless-stopped --name concord-consulting-web --log-driver=awslogs --log-opt awslogs-region=$AWS_REGION --log-opt awslogs-group=/concord-consulting/app --log-opt awslogs-stream=ec2-container --log-opt awslogs-create-group=true -e DB_HOST=$DB_HOST -e DB_USER=$DB_USER -e DB_PASS=$DB_PASS -e DB_NAME=$DB_NAME $IMAGE_URI"] --comment "Concord Consulting CodePipeline deploy"
       - echo "Deployment command sent successfully"
 
 artifacts:
